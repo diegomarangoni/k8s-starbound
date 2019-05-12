@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starbound
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      game: starbound
+  template:
+    metadata:
+      labels:
+        game: starbound
+    spec:
+      initContainers:
+      - name: chmod
+        image: busybox
+        command: [ "/bin/sh", "-c", "chmod 777 /data" ]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+
+      - name: steamcmd
+        image: cm2network/steamcmd:root
+        command: [ "/home/steam/steamcmd/steamcmd.sh" ]
+        args:
+        - "+login $(STEAM_LOGIN)"
+        - "+force_install_dir /data"
+        - "+app_update $(STEAM_APPID)"
+        - "+quit"
+        env:
+        - name: STEAM_LOGIN
+          value: "$(STEAM_USERNAME) $(STEAM_PASSWORD)"
+          #value: "anonymous"
+        - name: STEAM_APPID
+          value: "211820" # Starbound
+          #value: "740" # CS:GO
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        envFrom:
+        - secretRef:
+            name: steam
+
+      containers:
+      - name: game
+        image: ubuntu:18.04
+        command: [ "/bin/bash", "-c", "/config/start.sh" ]
+        ports:
+        - containerPort: 21025
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /config
+        lifecycle:
+          preStop:
+            exec:
+              command: [ "/bin/bash", "-c", "kill -s INT 1" ]
+
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: starbound
+
+      - name: config
+        configMap:
+          name: starbound
+          defaultMode: 0744
